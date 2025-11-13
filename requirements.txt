@@ -1,4 +1,4 @@
 streamlit
 paho-mqtt
-SpeechRecognition
-streamlit-mic-recorder
+speechrecognition
+pillow
