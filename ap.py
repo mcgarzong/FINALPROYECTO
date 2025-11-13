@@ -1,123 +1,179 @@
 import streamlit as st
-from PIL import Image
-import paho.mqtt.client as mqtt
-import time
-import io
+import paho.mqtt.client as paho
+import json
 import speech_recognition as sr
-from streamlit_mic_recorder import mic_recorder
+from gtts import gTTS
+import os
+from io import BytesIO
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="Asistente Senior", page_icon="🧓", layout="wide")
+# ----------------------------------------
+# 🔹 CONFIGURACIÓN INICIAL
+# ----------------------------------------
+st.set_page_config(
+    page_title="Asistente de Apoyo para Personas Mayores",
+    page_icon="👵",
+    layout="centered",
+    initial_sidebar_state="expanded",
+    menu_items=None
+)
 
-# --- ESTILOS PERSONALIZADOS ---
+# ----------------------------------------
+# 🌈 ESTILOS PERSONALIZADOS
+# ----------------------------------------
 st.markdown("""
-<style>
-    .stApp {
-        background-color: #FFF8E7; /* Fondo cálido */
-        color: #2B2B2B;
-        font-family: "Arial Rounded MT Bold", sans-serif;
+    <style>
+    body {
+        background-color: #FFF8EE;
+        font-family: 'Segoe UI', sans-serif;
     }
-    h1, h2, h3 {
-        color: #3E2723;
+    .main {
+        padding: 2rem;
+        border-radius: 15px;
+    }
+    .title {
+        color: #4E342E;
         text-align: center;
+        font-size: 36px;
         font-weight: bold;
+        margin-bottom: 0.5em;
     }
-    .big-button {
-        display: block;
+    .subtitle {
+        text-align: center;
+        color: #6D4C41;
+        font-size: 20px;
+        margin-bottom: 2em;
+    }
+    .button {
         width: 100%;
-        font-size: 28px;
-        font-weight: bold;
-        padding: 20px;
-        border-radius: 16px;
-        margin: 20px 0;
-        color: white;
+        height: 70px;
         border: none;
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+        border-radius: 15px;
+        cursor: pointer;
+        margin-bottom: 10px;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
     }
     .sos {
-        background-color: #E53935;
+        background: linear-gradient(45deg, #FF4E50, #F9D423);
     }
     .voz {
-        background-color: #1E88E5;
+        background: linear-gradient(45deg, #2196F3, #21CBF3);
+    }
+    .alarma {
+        background: linear-gradient(45deg, #66BB6A, #43A047);
     }
     .footer {
         text-align: center;
+        color: #8D6E63;
+        margin-top: 3em;
         font-size: 14px;
-        color: #555;
-        margin-top: 40px;
     }
-</style>
+    </style>
 """, unsafe_allow_html=True)
 
-# --- CONEXIÓN MQTT ---
-MQTT_SERVER = "broker.mqttdashboard.com"
-MQTT_TOPIC_SOS = "asistente_cami_sos"
-MQTT_TOPIC_VOZ = "asistente_cami_voz"
+# ----------------------------------------
+# 🌐 MQTT CONFIG
+# ----------------------------------------
+broker = "broker.mqttdashboard.com"
+topic_button = "cmqtt_cami"
+topic_voice = "voice_cami"
 
-client = mqtt.Client(client_id="streamlitCami")
-client.connect(MQTT_SERVER, 1883, 60)
+client = paho.Client()
 
-# --- FUNCIONES ---
-def enviar_sos():
-    client.publish(MQTT_TOPIC_SOS, "SOS ACTIVADO 🚨")
-    st.success("🚨 ¡Se ha enviado una alerta de emergencia!")
-    time.sleep(1)
+try:
+    client.connect(broker, 1883, 60)
+except Exception as e:
+    st.warning(f"⚠️ No se pudo conectar al broker MQTT: {e}")
 
+# ----------------------------------------
+# 🔊 FUNCIÓN DE VOZ
+# ----------------------------------------
 def escuchar_voz():
-    st.info("🎙️ Presiona el botón para grabar tu voz.")
-    audio = mic_recorder(
-        start_prompt="🎤 Iniciar grabación",
-        stop_prompt="🛑 Detener grabación",
-        just_once=True,
-        use_container_width=True,
-        key="mic"
-    )
-    if audio is not None:
-        st.success("🎧 Grabación lista, procesando...")
-        sound = io.BytesIO(audio["bytes"])
-        recognizer = sr.Recognizer()
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        st.info("🎙️ Escuchando... habla ahora.")
+        audio = recognizer.listen(source)
         try:
-            with sr.AudioFile(sound) as source:
-                audio_data = recognizer.record(source)
-                comando = recognizer.recognize_google(audio_data, language="es-ES")
-                st.write(f"Has dicho: **{comando}**")
-
-                if "medicina" in comando.lower():
-                    client.publish(MQTT_TOPIC_VOZ, "Recordatorio: hora del medicamento 💊")
-                    st.success("💊 Se activó el recordatorio de medicamentos.")
-                elif "alarma" in comando.lower():
-                    client.publish(MQTT_TOPIC_VOZ, "Alarma activada ⏰")
-                    st.warning("⏰ Alarma encendida.")
-                else:
-                    st.info("No se reconoció ninguna acción específica.")
+            text = recognizer.recognize_google(audio, language='es-ES')
+            st.success(f"Has dicho: {text}")
+            procesar_comando(text)
         except sr.UnknownValueError:
-            st.error("No se entendió el comando. Intente hablar más claro.")
+            st.error("❌ No pude entenderte, intenta de nuevo.")
         except sr.RequestError:
-            st.error("Error con el servicio de voz. Intenta nuevamente más tarde.")
+            st.error("❌ Error al conectar con el servicio de reconocimiento.")
 
-# --- INTERFAZ PRINCIPAL ---
-st.markdown("<h1>🧓 Asistente de Apoyo para Personas Mayores</h1>", unsafe_allow_html=True)
-st.markdown("<h3>Tu compañero para recordatorios, emergencias y ayuda con la voz</h3>", unsafe_allow_html=True)
+# ----------------------------------------
+# 🤖 PROCESAR COMANDO DE VOZ
+# ----------------------------------------
+def procesar_comando(text):
+    text_lower = text.lower()
+    if "ayuda" in text_lower:
+        mensaje = {"Act1": "ayuda"}
+        client.publish(topic_voice, json.dumps(mensaje))
+        st.warning("🚨 Señal de ayuda enviada.")
+    elif "estoy bien" in text_lower:
+        mensaje = {"Act1": "estoy bien"}
+        client.publish(topic_voice, json.dumps(mensaje))
+        st.success("✅ Señal de tranquilidad enviada.")
+    elif any(med in text_lower for med in ["vitamina", "analgésico", "lírica"]):
+        mensaje = {"Act1": text_lower}
+        client.publish(topic_voice, json.dumps(mensaje))
+        st.info(f"💊 Medicamento '{text_lower}' solicitado.")
+    else:
+        st.info("🤔 No reconocí el comando, intenta de nuevo.")
 
-# --- BOTONES GRANDES ---
-col1, col2 = st.columns(2)
+# ----------------------------------------
+# 🧭 NAVEGACIÓN ENTRE PÁGINAS
+# ----------------------------------------
+pagina = st.sidebar.radio("🧭 Navegación", ["🏠 Inicio", "🎙️ Asistente de Voz", "🚨 Emergencia"])
 
-with col1:
-    if st.button("🚨 Botón SOS", key="sos_btn", use_container_width=True):
-        enviar_sos()
+# ----------------------------------------
+# 🏠 PÁGINA DE INICIO
+# ----------------------------------------
+if pagina == "🏠 Inicio":
+    st.markdown('<h1 class="title">👵 Asistente de Apoyo para Personas Mayores</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Tu compañero para recordatorios, emergencias y ayuda con la voz 💬</p>', unsafe_allow_html=True)
 
-with col2:
-    escuchar_voz()
+    st.image("https://cdn-icons-png.flaticon.com/512/4472/4472580.png", width=180)
+    st.markdown("""
+    Bienvenido/a al Asistente de Apoyo.  
+    Aquí podrás **pedir ayuda con tu voz**, **recordar tus medicamentos**  
+    o **enviar una alerta de emergencia** si la necesitas.
+    """)
 
-# --- SECCIÓN DE EXPLICACIÓN ---
-st.markdown("---")
-st.subheader("📘 ¿Cómo funciona?")
-st.markdown("""
-- **Botón SOS:** En caso de emergencia, presiona este botón rojo grande.  
-  Enviará una señal de ayuda y alertará al sistema.  
-- **Asistente de voz:** Usa el micrófono azul.  
-  Puedes decir frases como:  
-  - “Recordar medicina” → activa un recordatorio de medicamentos 💊  
-  - “Encender alarma” → activa una alarma de ayuda ⏰  
-""")
+# ----------------------------------------
+# 🎙️ PÁGINA ASISTENTE DE VOZ
+# ----------------------------------------
+elif pagina == "🎙️ Asistente de Voz":
+    st.markdown('<h1 class="title">🎙️ Control por Voz</h1>', unsafe_allow_html=True)
+    st.write("Presiona el botón para grabar tu voz y dar una instrucción. Ejemplo: *'Ayuda', 'Estoy bien', 'Tomar analgésico'*.")
 
-st.markdown("<div class='footer'>Hecho con ❤️ para apoyar a nuestros adultos mayores.</div>", unsafe_allow_html=True)
+    if st.button("🎤 Iniciar grabación", key="voz", help="Presiona para hablar"):
+        escuchar_voz()
+
+# ----------------------------------------
+# 🚨 PÁGINA EMERGENCIA
+# ----------------------------------------
+elif pagina == "🚨 Emergencia":
+    st.markdown('<h1 class="title">🚨 Botón de Emergencia</h1>', unsafe_allow_html=True)
+    st.write("En caso de emergencia, presiona el botón para enviar una señal de ayuda inmediata.")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🆘 Enviar SOS", key="sos", use_container_width=True):
+            mensaje = {"Act1": "ON"}
+            client.publish(topic_button, json.dumps(mensaje))
+            st.warning("🚨 Señal SOS enviada al sistema.")
+    with col2:
+        if st.button("✅ Cancelar SOS", key="off", use_container_width=True):
+            mensaje = {"Act1": "OFF"}
+            client.publish(topic_button, json.dumps(mensaje))
+            st.success("✅ Señal de calma enviada.")
+
+# ----------------------------------------
+# 📜 PIE DE PÁGINA
+# ----------------------------------------
+st.markdown('<div class="footer">© 2025 Asistente de Apoyo | Desarrollado con 💛 por Camila Garzón</div>', unsafe_allow_html=True)
