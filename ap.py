@@ -51,7 +51,7 @@ MQTT_TOPIC_BOTONES_1 = "cmqtt_camilag"
 MQTT_TOPIC_BOTONES_2 = "cmqtt_cami"
 MQTT_TOPIC_VOZ = "voice_cami"
 
-client = mqtt.Client("streamlit_cami")
+client = mqtt.Client(client_id="streamlitCami")
 client.connect(MQTT_SERVER, 1883, 60)
 
 # --- FUNCIÓN PARA ENVIAR MQTT ---
