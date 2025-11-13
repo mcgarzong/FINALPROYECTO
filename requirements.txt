@@ -1,5 +1,6 @@
 streamlit
 paho-mqtt
 SpeechRecognition
-streamlit-mic-recorder
-pillow
+gTTS
+pydub
+Pillow
