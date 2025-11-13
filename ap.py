@@ -1,129 +1,117 @@
 import streamlit as st
-import paho.mqtt.client as mqtt
-import json
-import speech_recognition as sr
 from PIL import Image
+import paho.mqtt.client as mqtt
+import speech_recognition as sr
 import time
 
-# --- CONFIGURACIÓN INICIAL ---
-st.set_page_config(page_title="Asistente Cami", page_icon="🩺", layout="centered")
+# --- CONFIGURACIÓN DE LA PÁGINA ---
+st.set_page_config(page_title="Asistente Senior", page_icon="🧓", layout="wide")
 
-# --- ESTILOS ---
+# --- ESTILOS PERSONALIZADOS ---
 st.markdown("""
-    <style>
-    body {
-        background-color: #FFF8E7;
-    }
+<style>
     .stApp {
-        background-color: #FFF8E7;
-    }
-    h1, h2, h3, p {
+        background-color: #FFF8E7; /* Fondo cálido y suave */
+        color: #2B2B2B; /* Texto oscuro para contraste */
         font-family: "Arial Rounded MT Bold", sans-serif;
-        color: #333333;
     }
-    .boton-sos button {
-        background-color: #FF4B4B !important;
-        color: white !important;
-        font-size: 22px !important;
-        border-radius: 12px !important;
-        padding: 15px 40px !important;
+    h1, h2, h3 {
+        color: #3E2723;
+        text-align: center;
+        font-weight: bold;
     }
-    .boton-ok button {
-        background-color: #4CAF50 !important;
-        color: white !important;
-        font-size: 22px !important;
-        border-radius: 12px !important;
-        padding: 15px 40px !important;
+    .big-button {
+        display: block;
+        width: 100%;
+        font-size: 28px;
+        font-weight: bold;
+        padding: 20px;
+        border-radius: 16px;
+        margin: 20px 0;
+        color: white;
+        border: none;
     }
-    .voz button {
-        background-color: #2196F3 !important;
-        color: white !important;
-        font-size: 20px !important;
-        border-radius: 12px !important;
-        padding: 15px 40px !important;
+    .sos {
+        background-color: #E53935;
     }
-    </style>
+    .voz {
+        background-color: #1E88E5;
+    }
+    .info {
+        background-color: #43A047;
+    }
+    .footer {
+        text-align: center;
+        font-size: 14px;
+        color: #555;
+        margin-top: 40px;
+    }
+</style>
 """, unsafe_allow_html=True)
 
 # --- CONEXIÓN MQTT ---
 MQTT_SERVER = "broker.mqttdashboard.com"
-MQTT_TOPIC_BOTONES_1 = "cmqtt_camilag"
-MQTT_TOPIC_BOTONES_2 = "cmqtt_cami"
-MQTT_TOPIC_VOZ = "voice_cami"
+MQTT_TOPIC_SOS = "asistente_cami_sos"
+MQTT_TOPIC_VOZ = "asistente_cami_voz"
 
 client = mqtt.Client(client_id="streamlitCami")
 client.connect(MQTT_SERVER, 1883, 60)
 
-# --- FUNCIÓN PARA ENVIAR MQTT ---
-def send_mqtt_message(topic, data):
-    msg = json.dumps(data)
-    client.publish(topic, msg)
+# --- FUNCIONES ---
+def enviar_sos():
+    client.publish(MQTT_TOPIC_SOS, "SOS ACTIVADO 🚨")
+    st.success("🚨 ¡Se ha enviado una alerta de emergencia!")
+    time.sleep(1)
 
-# --- ENCABEZADO ---
-st.image("https://cdn-icons-png.flaticon.com/512/991/991952.png", width=120)
-st.title("👵 Asistente de Ayuda")
-st.subheader("Tu asistente amigable para emergencias y recordatorios 💗")
-st.markdown("---")
+def escuchar_voz():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        st.info("🎙️ Escuchando... hable después del sonido")
+        audio = r.listen(source, timeout=5)
+        try:
+            comando = r.recognize_google(audio, language="es-ES")
+            st.write(f"Has dicho: **{comando}**")
 
-# --- SECCIÓN DE BOTONES ---
-st.header("🚨 Botón de Ayuda")
+            if "medicina" in comando.lower():
+                client.publish(MQTT_TOPIC_VOZ, "Recordatorio: hora del medicamento 💊")
+                st.success("💊 Se activó el recordatorio de medicamentos.")
+            elif "alarma" in comando.lower():
+                client.publish(MQTT_TOPIC_VOZ, "Alarma activada ⏰")
+                st.warning("⏰ Alarma encendida.")
+            else:
+                st.info("No se reconoció ninguna acción específica.")
+        except sr.UnknownValueError:
+            st.error("No se entendió el comando. Intente hablar más claro.")
+        except sr.RequestError:
+            st.error("Error con el servicio de voz. Intenta nuevamente más tarde.")
 
+# --- INTERFAZ PRINCIPAL ---
+st.image("a25941a5-6e55-4080-a5fb-c914aea2654c.png", use_column_width=True)
+
+st.markdown("<h1>🧓 Asistente de Apoyo para Personas Mayores</h1>", unsafe_allow_html=True)
+st.markdown("<h3>Tu compañero para recordatorios, emergencias y ayuda con la voz</h3>", unsafe_allow_html=True)
+
+# --- BOTONES GRANDES ---
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("🆘 Enviar SOS", key="sos", help="Presiona si necesitas ayuda urgente", use_container_width=True):
-        send_mqtt_message(MQTT_TOPIC_BOTONES_1, {"Act1": "ON"})
-        st.success("🔴 Alarma activada (LED encendido).")
-        time.sleep(2)
+    if st.button("🚨 Botón SOS", key="sos_btn", use_container_width=True):
+        enviar_sos()
 
 with col2:
-    if st.button("✅ Estoy bien", key="ok", help="Presiona si ya estás bien", use_container_width=True):
-        send_mqtt_message(MQTT_TOPIC_BOTONES_2, {"Act1": "OFF"})
-        st.info("🟢 Alarma desactivada (LED apagado).")
-        time.sleep(2)
+    if st.button("🎙️ Activar Asistente de Voz", key="voz_btn", use_container_width=True):
+        escuchar_voz()
 
+# --- SECCIÓN DE EXPLICACIÓN ---
 st.markdown("---")
+st.subheader("📘 ¿Cómo funciona?")
+st.markdown("""
+- **Botón SOS:** En caso de emergencia, presiona este botón rojo grande.  
+  Enviará una señal de ayuda y alertará al sistema.  
+- **Asistente de voz:** Presiona el botón azul para hablar.  
+  Puedes decir frases como:  
+  - “Recordar medicina” → activa un recordatorio de medicamentos 💊  
+  - “Encender alarma” → activa una alarma de ayuda ⏰  
+""")
 
-# --- SECCIÓN DE CONTROL POR VOZ ---
-st.header("🎙️ Control por Voz")
-st.write("Puedes hablar para que el asistente reconozca tus palabras:")
-st.write("- Di **'ayuda'** para encender la alarma.")
-st.write("- Di **'estoy bien'** para apagarla.")
-st.write("- Di el nombre del **medicamento** que deseas (acetaminophen, desloratadina o lyrica).")
-
-if st.button("🎤 Activar Reconocimiento de Voz", key="voz", help="Haz clic y habla claro", use_container_width=True):
-    recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        st.write("🎧 Escuchando...")
-        audio = recognizer.listen(source, phrase_time_limit=4)
-    try:
-        text = recognizer.recognize_google(audio, language="es-ES").lower()
-        st.write(f"🗣️ Dijiste: **{text}**")
-
-        # --- DECISIONES POR VOZ ---
-        if "ayuda" in text:
-            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "ayuda"})
-            st.success("LED encendido por voz (ayuda detectada).")
-
-        elif "estoy bien" in text:
-            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "estoy bien"})
-            st.info("LED apagado por voz (estoy bien detectado).")
-
-        elif "acetaminofen" in text or "acetaminophen" in text:
-            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "acetaminophen"})
-            st.success("💊 Indicando medicamento: Acetaminophen (135°).")
-
-        elif "desloratadina" in text:
-            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "desloratadina"})
-            st.success("💊 Indicando medicamento: Desloratadina (90°).")
-
-        elif "lírica" in text or "lyrica" in text:
-            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "lyrica"})
-            st.success("💊 Indicando medicamento: Lyrica (45°).")
-
-        else:
-            st.warning("No se reconoció un comando válido.")
-    except sr.UnknownValueError:
-        st.error("No pude entenderte. Por favor, inténtalo de nuevo.")
-    except sr.RequestError:
-        st.error("Error con el servicio de reconocimiento de voz.")
+st.markdown("<div class='footer'>Hecho con ❤️ para apoyar a nuestros adultos mayores.</div>", unsafe_allow_html=True)
