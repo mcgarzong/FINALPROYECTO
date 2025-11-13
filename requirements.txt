@@ -1,4 +1,5 @@
 streamlit
 paho-mqtt
-speechrecognition
+SpeechRecognition
+pyaudio
 pillow
