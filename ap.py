@@ -176,4 +176,4 @@ elif pagina == "🚨 Emergencia":
 # ----------------------------------------
 # 📜 PIE DE PÁGINA
 # ----------------------------------------
-st.markdown('<div class="footer">© 2025 Asistente de Apoyo | Desarrollado con 💛 por Camila Garzón</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">© 2025 Asistente de Apoyo | Desarrollado con 💛 por Camila Garzón y Miguel Gaviria</div>', unsafe_allow_html=True)
