@@ -1,5 +1,12 @@
 streamlit
+gTTS==2.2.2
+paho-mqtt==1.6.1
 bokeh==2.4.3
 streamlit-bokeh-events
-paho-mqtt
-gTTS==2.2.2
+Pillow
+googletrans==3.1.0a0
+numpy==1.23.5
+pandas
+PyYAML
+tornado
+xyzservices
