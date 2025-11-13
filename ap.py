@@ -1,8 +1,10 @@
 import streamlit as st
 from PIL import Image
 import paho.mqtt.client as mqtt
-import speech_recognition as sr
 import time
+import io
+import speech_recognition as sr
+from streamlit_mic_recorder import mic_recorder
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="Asistente Senior", page_icon="🧓", layout="wide")
@@ -11,8 +13,8 @@ st.set_page_config(page_title="Asistente Senior", page_icon="🧓", layout="wide
 st.markdown("""
 <style>
     .stApp {
-        background-color: #FFF8E7; /* Fondo cálido y suave */
-        color: #2B2B2B; /* Texto oscuro para contraste */
+        background-color: #FFF8E7; /* Fondo cálido */
+        color: #2B2B2B;
         font-family: "Arial Rounded MT Bold", sans-serif;
     }
     h1, h2, h3 {
@@ -36,9 +38,6 @@ st.markdown("""
     }
     .voz {
         background-color: #1E88E5;
-    }
-    .info {
-        background-color: #43A047;
     }
     .footer {
         text-align: center;
@@ -64,30 +63,38 @@ def enviar_sos():
     time.sleep(1)
 
 def escuchar_voz():
-    r = sr.Recognizer()
-    with sr.Microphone() as source:
-        st.info("🎙️ Escuchando... hable después del sonido")
-        audio = r.listen(source, timeout=5)
+    st.info("🎙️ Presiona el botón para grabar tu voz.")
+    audio = mic_recorder(
+        start_prompt="🎤 Iniciar grabación",
+        stop_prompt="🛑 Detener grabación",
+        just_once=True,
+        use_container_width=True,
+        key="mic"
+    )
+    if audio is not None:
+        st.success("🎧 Grabación lista, procesando...")
+        sound = io.BytesIO(audio["bytes"])
+        recognizer = sr.Recognizer()
         try:
-            comando = r.recognize_google(audio, language="es-ES")
-            st.write(f"Has dicho: **{comando}**")
+            with sr.AudioFile(sound) as source:
+                audio_data = recognizer.record(source)
+                comando = recognizer.recognize_google(audio_data, language="es-ES")
+                st.write(f"Has dicho: **{comando}**")
 
-            if "medicina" in comando.lower():
-                client.publish(MQTT_TOPIC_VOZ, "Recordatorio: hora del medicamento 💊")
-                st.success("💊 Se activó el recordatorio de medicamentos.")
-            elif "alarma" in comando.lower():
-                client.publish(MQTT_TOPIC_VOZ, "Alarma activada ⏰")
-                st.warning("⏰ Alarma encendida.")
-            else:
-                st.info("No se reconoció ninguna acción específica.")
+                if "medicina" in comando.lower():
+                    client.publish(MQTT_TOPIC_VOZ, "Recordatorio: hora del medicamento 💊")
+                    st.success("💊 Se activó el recordatorio de medicamentos.")
+                elif "alarma" in comando.lower():
+                    client.publish(MQTT_TOPIC_VOZ, "Alarma activada ⏰")
+                    st.warning("⏰ Alarma encendida.")
+                else:
+                    st.info("No se reconoció ninguna acción específica.")
         except sr.UnknownValueError:
             st.error("No se entendió el comando. Intente hablar más claro.")
         except sr.RequestError:
             st.error("Error con el servicio de voz. Intenta nuevamente más tarde.")
 
 # --- INTERFAZ PRINCIPAL ---
-st.image("a25941a5-6e55-4080-a5fb-c914aea2654c.png", use_column_width=True)
-
 st.markdown("<h1>🧓 Asistente de Apoyo para Personas Mayores</h1>", unsafe_allow_html=True)
 st.markdown("<h3>Tu compañero para recordatorios, emergencias y ayuda con la voz</h3>", unsafe_allow_html=True)
 
@@ -99,8 +106,7 @@ with col1:
         enviar_sos()
 
 with col2:
-    if st.button("🎙️ Activar Asistente de Voz", key="voz_btn", use_container_width=True):
-        escuchar_voz()
+    escuchar_voz()
 
 # --- SECCIÓN DE EXPLICACIÓN ---
 st.markdown("---")
@@ -108,7 +114,7 @@ st.subheader("📘 ¿Cómo funciona?")
 st.markdown("""
 - **Botón SOS:** En caso de emergencia, presiona este botón rojo grande.  
   Enviará una señal de ayuda y alertará al sistema.  
-- **Asistente de voz:** Presiona el botón azul para hablar.  
+- **Asistente de voz:** Usa el micrófono azul.  
   Puedes decir frases como:  
   - “Recordar medicina” → activa un recordatorio de medicamentos 💊  
   - “Encender alarma” → activa una alarma de ayuda ⏰  
