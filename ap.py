@@ -1,99 +1,129 @@
 import streamlit as st
-import paho.mqtt.publish as publish
-import speech_recognition as sr
+import paho.mqtt.client as mqtt
 import json
+import speech_recognition as sr
+from PIL import Image
+import time
 
-# ----------------------------
-# CONFIGURACIÓN GENERAL
-# ----------------------------
+# --- CONFIGURACIÓN INICIAL ---
+st.set_page_config(page_title="Asistente Cami", page_icon="🩺", layout="centered")
+
+# --- ESTILOS ---
+st.markdown("""
+    <style>
+    body {
+        background-color: #FFF8E7;
+    }
+    .stApp {
+        background-color: #FFF8E7;
+    }
+    h1, h2, h3, p {
+        font-family: "Arial Rounded MT Bold", sans-serif;
+        color: #333333;
+    }
+    .boton-sos button {
+        background-color: #FF4B4B !important;
+        color: white !important;
+        font-size: 22px !important;
+        border-radius: 12px !important;
+        padding: 15px 40px !important;
+    }
+    .boton-ok button {
+        background-color: #4CAF50 !important;
+        color: white !important;
+        font-size: 22px !important;
+        border-radius: 12px !important;
+        padding: 15px 40px !important;
+    }
+    .voz button {
+        background-color: #2196F3 !important;
+        color: white !important;
+        font-size: 20px !important;
+        border-radius: 12px !important;
+        padding: 15px 40px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- CONEXIÓN MQTT ---
 MQTT_SERVER = "broker.mqttdashboard.com"
-TOPIC_LED = "migue/demo/led"
-TOPIC_SERVO = "migue/demo/servo"
+MQTT_TOPIC_BOTONES_1 = "cmqtt_camilag"
+MQTT_TOPIC_BOTONES_2 = "cmqtt_cami"
+MQTT_TOPIC_VOZ = "voice_cami"
 
-st.set_page_config(page_title="Proyecto Final IoT Cami 💡", page_icon="💡", layout="wide")
+client = mqtt.Client("streamlit_cami")
+client.connect(MQTT_SERVER, 1883, 60)
 
-st.title("💡 Proyecto IoT Multimodal — ESP32 + Streamlit")
-st.caption("Control del LED y servo por voz o botones usando MQTT")
+# --- FUNCIÓN PARA ENVIAR MQTT ---
+def send_mqtt_message(topic, data):
+    msg = json.dumps(data)
+    client.publish(topic, msg)
 
-# ----------------------------
-# Funciones
-# ----------------------------
-def send_mqtt_message(topic, message):
-    publish.single(topic, message, hostname=MQTT_SERVER)
-    st.success(f"📡 Mensaje enviado al topic `{topic}`: {message}")
+# --- ENCABEZADO ---
+st.image("https://cdn-icons-png.flaticon.com/512/991/991952.png", width=120)
+st.title("👵 Asistente de Ayuda")
+st.subheader("Tu asistente amigable para emergencias y recordatorios 💗")
+st.markdown("---")
 
-def recognize_voice():
+# --- SECCIÓN DE BOTONES ---
+st.header("🚨 Botón de Ayuda")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("🆘 Enviar SOS", key="sos", help="Presiona si necesitas ayuda urgente", use_container_width=True):
+        send_mqtt_message(MQTT_TOPIC_BOTONES_1, {"Act1": "ON"})
+        st.success("🔴 Alarma activada (LED encendido).")
+        time.sleep(2)
+
+with col2:
+    if st.button("✅ Estoy bien", key="ok", help="Presiona si ya estás bien", use_container_width=True):
+        send_mqtt_message(MQTT_TOPIC_BOTONES_2, {"Act1": "OFF"})
+        st.info("🟢 Alarma desactivada (LED apagado).")
+        time.sleep(2)
+
+st.markdown("---")
+
+# --- SECCIÓN DE CONTROL POR VOZ ---
+st.header("🎙️ Control por Voz")
+st.write("Puedes hablar para que el asistente reconozca tus palabras:")
+st.write("- Di **'ayuda'** para encender la alarma.")
+st.write("- Di **'estoy bien'** para apagarla.")
+st.write("- Di el nombre del **medicamento** que deseas (acetaminophen, desloratadina o lyrica).")
+
+if st.button("🎤 Activar Reconocimiento de Voz", key="voz", help="Haz clic y habla claro", use_container_width=True):
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
-        st.info("🎙️ Di una orden (ej: 'enciende las luces', 'apaga las luces', 'abre la puerta')")
-        audio = recognizer.listen(source, timeout=5)
+        st.write("🎧 Escuchando...")
+        audio = recognizer.listen(source, phrase_time_limit=4)
     try:
-        text = recognizer.recognize_google(audio, language="es-ES")
+        text = recognizer.recognize_google(audio, language="es-ES").lower()
         st.write(f"🗣️ Dijiste: **{text}**")
-        return text.lower()
+
+        # --- DECISIONES POR VOZ ---
+        if "ayuda" in text:
+            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "ayuda"})
+            st.success("LED encendido por voz (ayuda detectada).")
+
+        elif "estoy bien" in text:
+            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "estoy bien"})
+            st.info("LED apagado por voz (estoy bien detectado).")
+
+        elif "acetaminofen" in text or "acetaminophen" in text:
+            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "acetaminophen"})
+            st.success("💊 Indicando medicamento: Acetaminophen (135°).")
+
+        elif "desloratadina" in text:
+            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "desloratadina"})
+            st.success("💊 Indicando medicamento: Desloratadina (90°).")
+
+        elif "lírica" in text or "lyrica" in text:
+            send_mqtt_message(MQTT_TOPIC_VOZ, {"Act1": "lyrica"})
+            st.success("💊 Indicando medicamento: Lyrica (45°).")
+
+        else:
+            st.warning("No se reconoció un comando válido.")
     except sr.UnknownValueError:
-        st.error("❌ No se entendió lo que dijiste.")
-        return None
+        st.error("No pude entenderte. Por favor, inténtalo de nuevo.")
     except sr.RequestError:
-        st.error("⚠️ Error con el servicio de reconocimiento de voz.")
-        return None
-
-# ----------------------------
-# NAVEGACIÓN
-# ----------------------------
-page = st.sidebar.radio("Selecciona un modo 👇", ["🎤 Control por Voz", "🔘 Control Manual"])
-
-# ----------------------------
-# PÁGINA 1: CONTROL POR VOZ
-# ----------------------------
-if page == "🎤 Control por Voz":
-    st.header("🎤 Control por voz")
-
-    if st.button("🎙️ Iniciar reconocimiento"):
-        comando = recognize_voice()
-        if comando:
-            if "enciende" in comando or "ayuda" in comando:
-                message = json.dumps({"Act1": "enciende las luces"})
-                send_mqtt_message(TOPIC_LED, message)
-            elif "apaga" in comando:
-                message = json.dumps({"Act1": "apaga las luces"})
-                send_mqtt_message(TOPIC_LED, message)
-            elif "abre" in comando:
-                message = json.dumps({"Act1": "abre la puerta"})
-                send_mqtt_message(TOPIC_SERVO, message)
-            elif "cierra" in comando:
-                message = json.dumps({"Act1": "cierra la puerta"})
-                send_mqtt_message(TOPIC_SERVO, message)
-            else:
-                st.warning("⚠️ No se reconoció un comando válido.")
-
-# ----------------------------
-# PÁGINA 2: CONTROL MANUAL
-# ----------------------------
-elif page == "🔘 Control Manual":
-    st.header("🔘 Control Manual")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("💡 LED")
-        if st.button("Encender LED"):
-            message = json.dumps({"Act1": "ON"})
-            send_mqtt_message(TOPIC_LED, message)
-        if st.button("Apagar LED"):
-            message = json.dumps({"Act1": "OFF"})
-            send_mqtt_message(TOPIC_LED, message)
-
-    with col2:
-        st.subheader("🚪 Servo")
-        if st.button("Abrir puerta"):
-            message = json.dumps({"Act1": "abre la puerta"})
-            send_mqtt_message(TOPIC_SERVO, message)
-        if st.button("Cerrar puerta"):
-            message = json.dumps({"Act1": "cierra la puerta"})
-            send_mqtt_message(TOPIC_SERVO, message)
-
-    angle = st.slider("🎚️ Controlar ángulo manualmente", 0, 180, 90)
-    if st.button("Mover servo"):
-        message = json.dumps({"Analog": angle})
-        send_mqtt_message(TOPIC_SERVO, message)
-
+        st.error("Error con el servicio de reconocimiento de voz.")
